@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	//"golang.org/x/text/message"
@@ -20,7 +22,7 @@ type Time struct {
 
 // Desk struct represents a desk with an ID, features, and reservation/request times.
 type Desk struct {
-	ID           int
+	ID           string
 	Features     string
 	ReserveTimes []Time
 	RequestTimes []Time
@@ -51,7 +53,7 @@ func NewTime(userName string, startTime, finishTime int) Time {
 }
 
 // NewDesk creates a new Desk instance.
-func NewDesk(id int, features string) *Desk {
+func NewDesk(id string, features string) *Desk {
 	return &Desk{
 		ID:           id,
 		Features:     features,
@@ -195,7 +197,7 @@ func AddReserve(desks []*Desk, time Time, s *Service) {
 	result := time.UserName + " reserves desks "
 	for _, desk := range desks {
 		desk.ReserveTimes = append(desk.ReserveTimes, time)
-		result += strconv.Itoa(desk.ID) + " "
+		result += desk.ID + " "
 	}	
 	result += "for" + strconv.Itoa(price)
 	GetMessage(result)
@@ -209,11 +211,11 @@ func AddRequest(desk *Desk, time Time, s *Service, deskType string) {
 	price := GetPrice(desks, s, time)
 	if deskType == "special" {
 		price += s.SpecialEntrance
-		GetMessage(time.UserName + " got desk " + strconv.Itoa(desk.ID) + " for " + strconv.Itoa(price))
+		GetMessage(time.UserName + " got desk " + desk.ID + " for " + strconv.Itoa(price))
 	} else if price != 0{
-		GetMessage(time.UserName + " got desk " + strconv.Itoa(desk.ID) + " for " + strconv.Itoa(price))
+		GetMessage(time.UserName + " got desk " + desk.ID + " for " + strconv.Itoa(price))
 	} else {
-		GetMessage(time.UserName + " got desk " + strconv.Itoa(desk.ID))
+		GetMessage(time.UserName + " got desk " + desk.ID)
 	}
 }
 
@@ -264,4 +266,87 @@ func (s *Service)DeskStatus(time int, id string) {
 
 
 func main() {
+	scanner := bufio.NewScanner(os.Stdin)
+	var service *Service
+	var featurePrices []int
+
+	// Read the number of features and their prices
+	if scanner.Scan() {
+		parts := strings.Split(scanner.Text(), " ")
+		nFeatures, _ := strconv.Atoi(parts[0])
+		if scanner.Scan() {
+			featureParts := strings.Split(scanner.Text(), " ")
+			for i := 0; i < nFeatures; i++ {
+				price, _ := strconv.Atoi(featureParts[i]) 
+				featurePrices[i] = price 
+			}
+			
+		}
+	}
+
+	// Read the number of floors and special entrance fee
+	if scanner.Scan() {
+		parts := strings.Split(scanner.Text(), " ")
+		nFloors, _ := strconv.Atoi(parts[0])
+		specialEntrance, _ := strconv.Atoi(parts[1])
+		service = NewService(specialEntrance)
+		service.Features = featurePrices
+		service.NextID = nFloors
+		// Read floors and desks
+		for i := 1; i <= nFloors; i++ {
+			if scanner.Scan() {
+				floorParts := strings.Split(scanner.Text(), " ")
+				nDesks, _ := strconv.Atoi(floorParts[0])
+				floorType := floorParts[1]
+				floor := NewFloor(floorType)
+				floor.NextID = nDesks
+				if scanner.Scan() {
+					featuresList := strings.Split(scanner.Text(), " ")
+					for j := 1; j <= nDesks; j++ {
+						floor.Desks = append(floor.Desks, NewDesk(strconv.Itoa(i) + "-" + strconv.Itoa(j), featuresList[j-1]))
+					}
+				}
+				service.Floors = append(service.Floors, floor)
+			}
+		}
+	}
+	// Process commands
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "end" {
+			break
+		}
+
+		parts := strings.Split(line, " ")
+		cmd := parts[1]
+		timestamp, _ := strconv.Atoi(parts[0])
+
+		if cmd == "request_desk" {
+			username := parts[2]
+			deskType := parts[3]
+			duration, _ := strconv.Atoi(parts[4])
+			time := NewTime(username, timestamp, timestamp+duration)
+			service.SearchDesksForRequest(time, deskType, "")
+
+		} else if cmd == "reserve_desk" {
+			username := parts[2]
+			fromTime, _ := strconv.Atoi(parts[3])
+			duration, _ := strconv.Atoi(parts[4])
+			featureCode := parts[5]
+			time := NewTime(username, fromTime, fromTime+duration)
+			service.SearchDesksForReserve(time, featureCode, 1)
+
+		} else if cmd == "reserve_multiple_desks" {
+			username := parts[2]
+			numDesks, _ := strconv.Atoi(parts[3])
+			fromTime, _ := strconv.Atoi(parts[4])
+			duration, _ := strconv.Atoi(parts[5])
+			time := NewTime(username, fromTime, fromTime+duration)
+			service.SearchDesksForReserve(time, "", numDesks)
+
+		} else if cmd == "desk_status" {
+			deskID := parts[2]
+			service.DeskStatus(timestamp, deskID)
+		}
+	}
 }
